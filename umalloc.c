@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-const char author[] = ANSI_BOLD ANSI_COLOR_RED "REPLACE THIS WITH YOUR NAME AND UT EID" ANSI_RESET;
+const int SPLIT_THRESHOLD = 128; //minimum size for a split (64 + 32) for another header+payload combo
+const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 
 /*
  * The following helpers can be used to interact with the memory_block_t
@@ -65,7 +66,8 @@ void put_block(memory_block_t *block, size_t size, bool alloc) {
     assert(size % ALIGNMENT == 0);
     assert(alloc >> 1 == 0);
     block->block_size_alloc = size | alloc;
-    block->next = NULL;
+    if (alloc) block->next = 0xFEE1DEAD;
+    else block->next = NULL;
 }
 
 /*
@@ -87,13 +89,26 @@ memory_block_t *get_block(void *payload) {
 /*
  *  STUDENT TODO:
  *      Describe how you select which free block to allocate. What placement strategy are you using?
+
+ I'm simply choosing the first free block that fits.
  */
 
 /*
  * find - finds a free block that can satisfy the umalloc request.
  */
-memory_block_t *find(size_t size) {
+memory_block_t *find(size_t size) { //size is size of payload, since header already exists.
     //? STUDENT TODO
+    memory_block_t* cur = free_head;
+
+    if (cur->block_size_alloc & 0xFFFFFFF0 >= size) return cur;
+    
+    while(cur->next){
+        //Will allocated bit flag change outcome?
+        if ((cur->next->block_size_alloc & 0xFFFFFFF0) >= size) {
+            return cur->next;
+        }else cur = cur->next;
+    }
+
     return NULL;
 }
 
@@ -108,14 +123,19 @@ memory_block_t *extend(size_t size) {
 /*
  *  STUDENT TODO:
  *      Describe how you chose to split allocated blocks. Always? Sometimes? Never? Which end?
+
+ I decided to split such that the free block will be on the "left" and the allocated block will be on the "right".
+ I chose to implement a thresholded split as to guarantee a minimum block size for every free block.
 */
 
 /*
- * split - splits a given block in parts, one allocated, one free.
+ * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
-    //? STUDENT TODO
-    return NULL;
+
+    block->block_size_alloc = block->block_size_alloc - (size & 0xFFFFF0); // preserve allocated status
+    put_block((memory_block_t*) ((char* block) + block->block_size_alloc), size, false); // will likely be allocated though
+    return (memory_block_t*) ((char* block) + block->block_size_alloc);
 }
 
 /*
@@ -139,6 +159,11 @@ int uinit() {
 
 /*
  * umalloc -  allocates size bytes and returns a pointer to the allocated memory.
+ '
+ TODO: handle making size a data aligned size here;
+ TODO: handle splitting here;
+ TODO: handle creating magic number here;
+ TODO: increment free head to next free block.
  */
 void *umalloc(size_t size) {
     //* STUDENT TODO
