@@ -13,14 +13,8 @@
  */
 typedef struct memory_block_struct {
     size_t block_size_alloc;
-    //struct memory_block_struct *next;
-    union free_pointer_or_magic_number info;
-} memory_block_t;
-
-typedef union free_pointer_or_magic_number {
     struct memory_block_struct *next;
-    char magic_num[8];
-} header_info;
+} memory_block_t;
 
 // Helper Functions, this may be editted if you change the signature in umalloc.c
 
@@ -50,7 +44,7 @@ memory_block_t *get_block(void *payload);
 
 //finds a memory block of at least the input ize
 memory_block_t *find(size_t size);
-//
+//extends the current heap if more memory is requested
 memory_block_t *extend(size_t size);
 //splits the input memory block, with one block being at least the input size
 memory_block_t *split(memory_block_t *block, size_t size);

@@ -24,13 +24,24 @@ int check_heap() {
     // Example heap check:
     // Check that all blocks in the free list are marked free.
     // If a block is marked allocated, return -1.
-    /*
+
         memory_block_t *cur = free_head;
         while (cur) {
-            if (is_allocated(cur)) {
+            if (is_allocated(cur) || check_malloc_output(cur, cur->block_size_alloc)) {
                 return -1;
             }
+
+            sbrk_block* cur_heap = sbrk_blocks;
+            whlie (cur_heap) {
+                if (!(heap_cur->sbrk_start > (uint64_t)cur + cur->block_size_alloc ||
+                    heap_cur->sbrk_end < (unit64_t)cur )) {
+                        return -1;
+                    }
+                cur_heap = cur_heap -> next;
+            }
+
+            cur=cur->next;
         }
-    */
+
     return 0;
 }

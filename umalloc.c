@@ -100,15 +100,15 @@ memory_block_t *find(size_t size) { //size is size of payload, since header alre
     //? STUDENT TODO
     memory_block_t* cur = free_head;
 
-    if (cur->block_size_alloc & 0xFFFFFFF0 >= size) return cur;
+    if (cur->block_size_alloc & ~(ALIGNMENT - 1) >= size) return cur;
     
     while(cur->next){
         //Will allocated bit flag change outcome?
-        if ((cur->next->block_size_alloc & 0xFFFFFFF0) >= size) {
+        if ((cur->next->block_size_alloc & ~(ALIGNMENT - 1)) >= size) {
             return cur->next;
         }else cur = cur->next;
     }
-
+    
     return NULL;
 }
 
@@ -132,8 +132,7 @@ memory_block_t *extend(size_t size) {
  * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
-
-    block->block_size_alloc = block->block_size_alloc - (size & 0xFFFFF0); // preserve allocated status
+    block->block_size_alloc = block->block_size_alloc - (size & ~(ALIGNMENT - 1)); // preserve allocated status
     put_block((memory_block_t*) ((char* block) + block->block_size_alloc), size, false); // will likely be allocated though
     return (memory_block_t*) ((char* block) + block->block_size_alloc);
 }
@@ -153,12 +152,36 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    //* STUDENT TODO
+    //* STUDENT TODO 
+
+    int size = 16 * PAGESIZE;
+    //obtain new heap
+    void* heap = csbrk(size);
+    if (!heap) return -1;
+
+    //account for header size in size
+    int offset = 16;
+
+    //check for block alignment
+    while ((int heap) % ALIGNMENT != 0) {
+        offset++;
+        (char*) heap++;
+    } //could I ever go out of bounds?
+
+    //set beginning of free list to beginning of arena
+    free_head = heap;
+
+    //make the new arena a freeblock
+    put_block(heap, size - offset, 0);
+
+    //set next of freeblock to self for circular linked list
+    (memory_block_t*) heap -> next = (memory_block_t*) heap;
+
     return 0;
 }
 
 /*
- * umalloc -  allocates size bytes and returns a pointer to the allocated memory.
+ * umalloc -  allocates size bytes and returns a pointer to the allocated memory
  '
  TODO: handle making size a data aligned size here;
  TODO: handle splitting here;
