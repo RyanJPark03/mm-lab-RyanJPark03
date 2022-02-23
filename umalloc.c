@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-const int SPLIT_THRESHOLD = 128; //minimum size for a split (64 + 32) for another header+payload combo
+//size in memory_block_t includes header size.
+const int SPLIT_THRESHOLD = 32; //minimum size for a split (16 + 16) for another header+payload combo
 const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 
 /*
@@ -52,7 +53,7 @@ size_t get_size(memory_block_t *block) {
 }
 
 /*
- * get_next - gets the next block.
+ * get_next - gets the next block. (for free blocks only)
  */
 memory_block_t *get_next(memory_block_t *block) {
     assert(block != NULL);
@@ -93,28 +94,42 @@ memory_block_t *get_block(void *payload) {
  *      Describe how you select which free block to allocate. What placement strategy are you using?
 
  I'm simply choosing the first free block that fits, then incrementing a pointer to the next free block.
- 
  */
 
 /*
  * find - finds a free block that can satisfy the umalloc request.
  */
-memory_block_t *find(size_t size) { //size is size of payload, since header already exists.
+memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
-    //handle splitting!!
-    memory_block_t* cur = free_head;
+    memory_block_t* cur = search_entry;
+    int cur_size = (cur->block_size_alloc & ~(ALIGNMENT - 1);
 
-    if ( (cur->block_size_alloc & ~(ALIGNMENT - 1) )>= size) return cur;
-    
-    while(cur->next){
-        //Will allocated bit flag change outcome?
-        if ((cur->next->block_size_alloc & ~(ALIGNMENT - 1)) >= size) {
-            return cur->next;
-        }else {//if too big split
-        cur = cur->next;
-        }
+    if (cur_size >= size && cur_size - SPLIT_THRESHOLD <= size) 
+        return cur;
+    else if (cur_size - SPLIT_THRESHOLD >= size) {
+        if (cur->next) ? search_entry = free_head : search_entry = get_next(cur);
+        return split(cur, size);
     }
     
+    while((uint64_t) cur != (uint64_t) free_head){
+        cur_size = (cur->block_size_alloc & ~(ALIGNMENT - 1);
+        if (cur_size < size) {
+            if (cur->next) ? cur = get_next(cur) : cur = free_head;
+        } else if (cur_size >= size && cur_size - SPLIT_THRESHOLD <= size) {
+            if (cur->next) ? search_entry = get_next(cur) : search_entry = free_head;
+            return cur;
+        } else if (cur_size - SPLIT_THRESHOLD >= size) {
+            if (cur->next) ? search_entry = get_next(cur) : search_entry = free_head;
+            return split(cur, size);
+        }
+    }
+    //if cur == free_head ->>>request new arena
+    if ((uint64_t) cur == (uint64_t) free_head) {
+        uinit();
+        while(cur -> next) cur = cur -> next;
+        return split(cur, size);
+    }
+
     return NULL;
 }
 
@@ -145,10 +160,10 @@ memory_block_t *split(memory_block_t *block, size_t size) {
     block->block_size_alloc = block->block_size_alloc - size;
 
     // preserve allocated status
-    put_block((memory_block_t*) ((uint64_t)block+block->block_size_alloc), size, true);
+    put_block((memory_block_t*) ((uint64_t)block)+(uint64_t)(block->block_size_alloc), size, true);
     // assume the allocated part is free
 
-    return (memory_block_t*) ((uint64_t)block + block->block_size_alloc);
+    return (memory_block_t*) ((uint64_t)block)+(uint64_t)(block->block_size_alloc);
 } // done for now
 
 /*
@@ -168,22 +183,21 @@ memory_block_t *coalesce(memory_block_t *block) {
 int uinit() {
     //* STUDENT TODO 
 
-    int size = 16 * PAGESIZE;
+    int size = PAGESIZE; // is 1/16 max size, is possible that requesting max size means
+                        // program is less efficient space wise.
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return -1;
 
-    //account for header size in size
-    int offset = 16;
-
     //check for block alignment
+    int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
         (uint64_t) heap++;
     } //could I ever go out of bounds?
 
     //set beginning of free list to beginning of arena
-    if (!free_head) free_head = heap;    
+    if (!free_head) free_head = heap;
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
