@@ -15,6 +15,9 @@ const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 // A sample pointer to the start of the free list.
 memory_block_t *free_head;
 
+//pointer to search spot in free ist
+memory_block_t *search_entry;
+
 /*
  * is_allocated - returns true if a block is marked as allocated.
  */
@@ -66,8 +69,7 @@ void put_block(memory_block_t *block, size_t size, bool alloc) {
     assert(size % ALIGNMENT == 0);
     assert(alloc >> 1 == 0);
     block->block_size_alloc = size | alloc;
-    if (alloc) block->next = 0xFEE1DEAD;
-    else block->next = NULL;
+    block->next = NULL;
 }
 
 /*
@@ -90,7 +92,8 @@ memory_block_t *get_block(void *payload) {
  *  STUDENT TODO:
  *      Describe how you select which free block to allocate. What placement strategy are you using?
 
- I'm simply choosing the first free block that fits.
+ I'm simply choosing the first free block that fits, then incrementing a pointer to the next free block.
+ 
  */
 
 /*
@@ -98,15 +101,18 @@ memory_block_t *get_block(void *payload) {
  */
 memory_block_t *find(size_t size) { //size is size of payload, since header already exists.
     //? STUDENT TODO
+    //handle splitting!!
     memory_block_t* cur = free_head;
 
-    if (cur->block_size_alloc & ~(ALIGNMENT - 1) >= size) return cur;
+    if ( (cur->block_size_alloc & ~(ALIGNMENT - 1) )>= size) return cur;
     
     while(cur->next){
         //Will allocated bit flag change outcome?
         if ((cur->next->block_size_alloc & ~(ALIGNMENT - 1)) >= size) {
             return cur->next;
-        }else cur = cur->next;
+        }else {//if too big split
+        cur = cur->next;
+        }
     }
     
     return NULL;
@@ -132,10 +138,18 @@ memory_block_t *extend(size_t size) {
  * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
-    block->block_size_alloc = block->block_size_alloc - (size & ~(ALIGNMENT - 1)); // preserve allocated status
-    put_block((memory_block_t*) ((char* block) + block->block_size_alloc), size, false); // will likely be allocated though
-    return (memory_block_t*) ((char* block) + block->block_size_alloc);
-}
+    //assume input size is always aligned
+    //input size includes the size of the header
+
+    //update size of free block
+    block->block_size_alloc = block->block_size_alloc - size;
+
+    // preserve allocated status
+    put_block((memory_block_t*) ((uint64_t)block+block->block_size_alloc), size, true);
+    // assume the allocated part is free
+
+    return (memory_block_t*) ((uint64_t)block + block->block_size_alloc);
+} // done for now
 
 /*
  * coalesce - coalesces a free memory block with neighbors.
@@ -163,19 +177,30 @@ int uinit() {
     int offset = 16;
 
     //check for block alignment
-    while ((int heap) % ALIGNMENT != 0) {
+    while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
-        (char*) heap++;
+        (uint64_t) heap++;
     } //could I ever go out of bounds?
 
     //set beginning of free list to beginning of arena
-    free_head = heap;
+    if (!free_head) free_head = heap;    
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
+    memory_block_t* new_arena = (memory_block_t*) heap;
+
+    if ((uint64_t) new_arena < (uint64_t) free_head) {//new arena is before current arena
+        new_arena -> next = free_head;
+        free_head = new_arena;
+    }else {//new arena comes after current arena
+        memory_block_t* cur_free = free_head;
+        while(cur_free -> next) cur_free = cur_free -> next;
+        cur_free -> next = new_arena;
+    }
 
     //set next of freeblock to self for circular linked list
-    (memory_block_t*) heap -> next = (memory_block_t*) heap;
+    //not dealing with circular linked list for now
+    // (memory_block_t*) free_head -> next = (memory_block_t*) heap;
 
     return 0;
 }
@@ -184,8 +209,6 @@ int uinit() {
  * umalloc -  allocates size bytes and returns a pointer to the allocated memory
  '
  TODO: handle making size a data aligned size here;
- TODO: handle splitting here;
- TODO: handle creating magic number here;
  TODO: increment free head to next free block.
  */
 void *umalloc(size_t size) {
@@ -204,4 +227,33 @@ void *umalloc(size_t size) {
  */
 void ufree(void *ptr) {
     //* STUDENT TODO
-}
+
+    //typecast for ease
+    memory_block_t* new_free_block = (memory_block_t*) ((uint64_t) ptr - 16);
+    //reset allocated flag
+    new_free_block -> block_size_alloc = new_free_block -> block_size_alloc & ~(0x1);
+
+    /*new free block should never come before the free head. In the currrent arena, the free
+    head is set to the beginning of the arena, and new mallocs will be splits off the arena, meaning
+    they are at the end. So the origninal free head stays at the beginning of the current and gets
+    smaller. If there is another arena to consider, I handle moving the free head when requesting new
+    information.
+    */
+
+    //look for the two free blocks to place the new one in between
+    memory_block_t* cur_free_block = free_head;
+    while (cur_free_block && cur_free_block -> next) {
+        if ((uint64_t) cur_free_block < (uint64_t) new_free_block &&
+            (uint64_t) new_free_block < (uint64_t) (cur_free_block -> next)) {
+            new_free_block -> next = cur_free_block -> next;
+            cur_free_block -> next = new_free_block;
+            break;
+        } else cur_free_block = cur_free_block -> next;
+    }
+
+    //the new free block belongs at the end
+    if ( !(cur_free_block -> next) ) {
+        cur_free_block -> next = new_free_block;
+        new_free_block -> next = NULL;
+   }
+} // done for now - complies
