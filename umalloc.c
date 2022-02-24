@@ -17,7 +17,7 @@ const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 memory_block_t *free_head;
 
 //pointer to search spot in free ist
-//memory_block_t *search_entry;
+memory_block_t *search_entry;
 
 /*
  * is_allocated - returns true if a block is marked as allocated.
@@ -101,58 +101,32 @@ memory_block_t *get_block(void *payload) {
  */
 memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
-    //memory_block_t* cur = search_entry;
-    memory_block_t* cur = free_head;
-    
-    if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-        if (cur->next) {
-            cur = cur->next;
-        } else {
-            int size_multiplier = 1;
-            while (size_multiplier * PAGESIZE <= size) size_multiplier++;
-            extend(size_multiplier*PAGESIZE);
-            //line below could cause error if uinit csbrk size is not big enough for the requested size
-            return find(size);
-        }
-    } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-        return split(cur, size);
-    }
+    memory_block_t* cur = search_entry;
 
-    // if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-    //     if ((uint64_t) cur == (uint64_t) free_head) {
-    //         cur = cur->next;
-    //     } else {
-    //         //search_entry = (cur->next) ? cur->next : free_head;
-            
-    //         memory_block_t* temp = free_head;
-    //         while (temp -> next != cur) temp = temp->next;
-    //         temp->next = cur->next;
-
-    //         return cur;
-    //     } 
-    // } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-    //     //search_entry = (cur->next) ? get_next(cur) : free_head;
-    //     return split(cur, size);
-    // }
-    
-    while(cur /*&& (uint64_t) cur != (uint64_t) search_entry*/ ){
-        //cur->block_size_alloc = cur->block_size_alloc & ~(ALIGNMENT - 1);
-        if (get_size(cur) < size) {
-            //cur = (cur->next) ? get_next(cur) : free_head;
-            cur = cur -> next;
-        } else if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-            //search_entry = (cur->next) ? get_next(cur) : free_head;
-
-            memory_block_t* temp = free_head;
-            while (temp -> next != cur) temp = temp->next;
-            temp->next = cur->next;
-            cur->next = NULL;
-            allocate(cur);
-
-            return cur;
+    //with search entry code
+    while((uint64_t) cur->next != (uint64_t) search_entry){
+        if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
+        //we don't want to give up free head
+            if ((uint64_t) cur == (uint64_t) free_head && cur->next) { 
+                //search from the next free block
+                cur = cur -> next;
+            } else if ((uint64_t) cur == (uint64_t) free_head) {
+                //free head is the only remaining free block that works
+                //extend, search again
+                extend(4*PAGESIZE);
+                return find(size);
+            } else {
+                //cur is not the free head, so we can just return after handling pointers
+                remove_from_free_list(cur); // must write
+                return cur;
+            }
         } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-            //search_entry = (cur->next) ? get_next(cur) : free_head;
+        //cur must be split, no pointers to handle.
+            search_entry = (cur->next) ? get_next(cur) : free_head;
             return split(cur, size);
+        } else {
+        //cur is too small, go to next
+            cur = cur -> next;
         }
     }
     
@@ -225,7 +199,6 @@ memory_block_t *split(memory_block_t *block, size_t size) {
  */
  //ONLY DOES LEFT COALESCING. ALL COALESCE CASES CAN BE MADE INTO LEFT COALESCING CASES
 memory_block_t *coalesce(memory_block_t *block) {
-    //? STUDENT TODO
     block -> block_size_alloc += get_size((memory_block_t*) 
         (((uint64_t) block) + get_size(block)));
     return block;
@@ -236,10 +209,8 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    //* STUDENT TODO 
+    int size = 4 * PAGESIZE; 
 
-    int size = 4 * PAGESIZE; // is 1/4 max size, is possible that requesting max size means
-                        // program is less efficient space wise.
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return -1;
@@ -254,7 +225,7 @@ int uinit() {
     //set beginning of free list to beginning of arena
     if (!free_head) {
         free_head = heap;
-        //search_entry = free_head;
+        search_entry = free_head;
         free_head->next = NULL;
     }
 
@@ -286,23 +257,9 @@ void *umalloc(size_t size) {
     //set memory block as allocated
     allocate(mblock);
 
-    //     //remove found block from free list
-    // memory_block_t* cur_free = free_head;
-    //     //did not handle case when mblock == free head
-    //     //    do not need to handle this edge case
-    // while (cur_free->next && (uint64_t) (cur_free->next) != (uint64_t) mblock) {
-    //     cur_free = cur_free -> next;
-    // }
-    // if (mblock->next) {
-    //     cur_free->next = mblock->next;
-    //     mblock -> next = NULL;
-    // } else { //either was a split block or is the last free block
-    //     if ( !check_malloc_output(mblock, get_size(mblock)) ) {
-    //         cur_free->next=NULL; 
-    //         // is last free block. Set penultimate free block next to null
-    //     }//else is a split block. Nothing to do.
-    // }
-    // //no magic number handling
+    //magic number
+    mblock->next = (memory_block_t*) 0xDEADBEEF;
+
     return (void*) ((uint64_t) mblock);
 }
 
@@ -368,4 +325,20 @@ void ufree(void *ptr) {
             new_free_block -> next = NULL;
         }
    }
+}
+
+/*
+removes the input free block from the free list
+*/
+void remove_from_free_list(memory_block_t* remove) {
+    assert(!is_allocated(remove));
+    assert(remove);
+
+    //find previous free block
+    memory_block_t* temp = free_head;
+    while ((uint64_t) temp->next != (uint64_t) remove) temp = get_next(temp);
+    //skip block to remove
+    temp->next = remove->next;
+    //null out next pointer of block to remove
+    remove->next = NULL;
 }
