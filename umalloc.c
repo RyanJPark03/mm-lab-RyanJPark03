@@ -5,7 +5,7 @@
 #include <assert.h>
 
 //size in memory_block_t includes header size.
-const int SPLIT_THRESHOLD = 32; //minimum size for a split (16 + 16) for another header+payload combo
+const int SPLIT_THRESHOLD = 16; //minimum size for a split (16 + 16) for another header+payload combo
 const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 
 /*
