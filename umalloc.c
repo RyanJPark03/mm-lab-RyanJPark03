@@ -127,7 +127,10 @@ memory_block_t *find(size_t size) { //size is size of header and payload
     }
     
     //none of the current free blocks are big enough. Request one that is big enough.
-    uinit();
+    //what if 4*pagesize is not big enough, but 5*pagesize is?
+    int size_multiplier = 1;
+    while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+    extend(size_multiplier*PAGESIZE);
     //line below could cause error if uinit csbrk size is not big enough for the requested size
     return find(size);
 }
@@ -136,8 +139,31 @@ memory_block_t *find(size_t size) { //size is size of header and payload
  * extend - extends the heap if more memory is required.
  */
 memory_block_t *extend(size_t size) {
-    //? STUDENT TODO
-    return NULL;
+    //* STUDENT TODO 
+    //obtain new heap
+    void* heap = csbrk(size);
+    if (!heap) return NULL;
+
+    //check for block alignment
+    int offset = 0;
+    while ((uint64_t) heap % ALIGNMENT != 0) {
+        offset++;
+        (uint64_t) heap++;
+    } //could I ever go out of bounds?
+
+    //make the new arena a freeblock
+    put_block(heap, size - offset, 0);
+    memory_block_t* new_arena = (memory_block_t*) heap;
+
+    if ((uint64_t) new_arena < (uint64_t) free_head) {//new arena is before current arena
+        new_arena -> next = free_head;
+        free_head = new_arena;
+    }else {//new arena comes after current arena
+        memory_block_t* cur_free = free_head;
+        while(cur_free -> next) cur_free = cur_free -> next;
+        cur_free -> next = new_arena;
+    }
+    return new_arena;
 }
 
 /*
@@ -235,13 +261,42 @@ void *umalloc(size_t size) {
     while (size % ALIGNMENT != 0) size++;
     //find right block
     memory_block_t* mblock = find(size);
-    //set 
+    //set memory block as allocated
+    assert(!(get_size(mblock) & 0x1)); //assert block is not already allocated
+    mblock->block_size_alloc += 1;
 
+    //only need to remove from free list if found block was not split. Split makes the returned block's
+    //next = NULL. If i find a whole free block, then thats when it still has a next.
 
+    //what if entire block allocated, so free head only free block?
+    //     in find, i never return the free head without splitting it.
 
+    //there is a case when mblock is the last free block, so next will be null. However, the second to 
+    //last free block will still point to it.
 
+        //can't ever equal eachother. find never returns free head.
+        // if ((uint64_t) free_head == (uint64_t) mblock) {
+        //     //no need to do a null check since mblock->next checked already.
+        //     free_head = mblock -> next;
+        // }
 
-    return NULL;
+        //remove found block from free list
+        memory_block_t* cur_free = free_head;
+        //did not handle case when mblock == free head
+        //    do not need to handle this edge case
+        while (cur_free->next && (uint64_t)cur_free->next != (uint64_t) mblock) {
+            cur_free = cur_free -> next;
+        }
+        if (mblock->next) {
+            cur_free->next = mblock->next;
+            mblock -> next = NULL;
+        } else { //either was a split block or is the last free block
+            if ( check_malloc_output(mblock, ((uint64_t)mblock->block_size_alloc) + 1) ) {
+                cur_free->next=NULL; // is last free block. Set penultimate free block next to null
+            }//else is a split block. Nothing to do.
+        }
+    //no magic number handling
+    return mblock;
 }
 
 /*
