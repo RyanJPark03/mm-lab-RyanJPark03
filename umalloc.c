@@ -104,7 +104,7 @@ memory_block_t *find(size_t size) { //size is size of header and payload
     memory_block_t* cur = search_entry;
 
     //with search entry code
-    while((uint64_t) cur->next != (uint64_t) search_entry){
+    while(cur && (uint64_t) cur->next != (uint64_t) search_entry){
         if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
         //we don't want to give up free head
             if ((uint64_t) cur == (uint64_t) free_head && cur->next) { 
