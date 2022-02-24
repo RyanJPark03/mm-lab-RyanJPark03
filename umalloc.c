@@ -102,25 +102,24 @@ memory_block_t *get_block(void *payload) {
 memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
     memory_block_t* cur = search_entry;
-    int cur_size = cur->block_size_alloc & ~(ALIGNMENT - 1);
 
-    if (cur_size >= size && cur_size - SPLIT_THRESHOLD <= size) {
+    if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
         if ((uint64_t) cur == (uint64_t) free_head) {
             cur = cur -> next;
         } else return cur;
-    } else if (cur_size - SPLIT_THRESHOLD >= size) {
-        search_entry = (cur->next) ? free_head :  get_next(cur);
+    } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
+        search_entry = (cur->next) ? free_head : get_next(cur);
         return split(cur, size);
     }
     
     while((uint64_t) cur != (uint64_t) search_entry){
-        cur_size = cur->block_size_alloc & ~(ALIGNMENT - 1);
-        if (cur_size < size) {
+        cur->block_size_alloc = cur->block_size_alloc & ~(ALIGNMENT - 1);
+        if (get_size(cur) < size) {
             cur = (cur->next) ? get_next(cur) : free_head;
-        } else if (cur_size >= size && cur_size - SPLIT_THRESHOLD <= size) {
+        } else if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
             search_entry = (cur->next) ? get_next(cur) : free_head;
             return cur;
-        } else if (cur_size - SPLIT_THRESHOLD >= size) {
+        } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
             search_entry = (cur->next) ? get_next(cur) : free_head;
             return split(cur, size);
         }
@@ -178,18 +177,23 @@ memory_block_t *extend(size_t size) {
  * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
-    //assume input size is always aligned
-    //input size includes the size of the header
+
+    //debugging local vars:
+    uint64_t blockSize = get_size(block);
+    uint64_t blockAddy = (uint64_t) block;
+    assert(blockSize % 16 == 0);
+    assert(blockAddy % 16 == 0);
 
     //update size of free block
-    block->block_size_alloc = block->block_size_alloc - size;
+    block->block_size_alloc = blockSize- size;
+    blockSize -= size;
 
     // preserve allocated status
-    put_block((memory_block_t*) (((uint64_t)block)+(uint64_t)(block->block_size_alloc)+1), size, false);
+    put_block((memory_block_t*) ((blockAddy)+blockSize), size, true);
     // assume the allocated part is free
 
-    return (memory_block_t*) (((uint64_t)block)+(uint64_t)(block->block_size_alloc)+1);
-} // done for now
+    return (memory_block_t*) (blockAddy+blockSize);
+}
 
 /*
  * coalesce - coalesces a free memory block with neighbors.
@@ -197,7 +201,8 @@ memory_block_t *split(memory_block_t *block, size_t size) {
  //ONLY DOES LEFT COALESCING. ALL COALESCE CASES CAN BE MADE INTO LEFT COALESCING CASES
 memory_block_t *coalesce(memory_block_t *block) {
     //? STUDENT TODO
-    block -> block_size_alloc += ((uint64_t) ((memory_block_t*)block->block_size_alloc)->block_size_alloc);
+    block -> block_size_alloc += ((uint64_t) ((memory_block_t*)
+            block->block_size_alloc)->block_size_alloc);
     return block;
 }
 
@@ -218,7 +223,7 @@ int uinit() {
     int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
-        (uint64_t) heap++;
+        heap = (void*) (((uint64_t)heap)+1);
     } //could I ever go out of bounds?
 
     //set beginning of free list to beginning of arena
@@ -230,16 +235,6 @@ int uinit() {
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
-    // memory_block_t* new_arena = (memory_block_t*) heap;
-
-    // if ((uint64_t) new_arena < (uint64_t) free_head) {//new arena is before current arena
-    //     new_arena -> next = free_head;
-    //     free_head = new_arena;
-    // }else {//new arena comes after current arena
-    //     memory_block_t* cur_free = free_head;
-    //     while(cur_free -> next) cur_free = cur_free -> next;
-    //     cur_free -> next = new_arena;
-    // }
 
     //set next of freeblock to self for circular linked list
     //not dealing with circular linked list for now
@@ -264,9 +259,9 @@ void *umalloc(size_t size) {
     memory_block_t* mblock = find(size);
     
     //set memory block as allocated
-    mblock->block_size_alloc = mblock->block_size_alloc | 0x1;
+    allocate(mblock);
 
-    //only need to remove from free list if found block was not split. Split makes the returned block's
+    /*//only need to remove from free list if found block was not split. Split makes the returned block's
     //next = NULL. If i find a whole free block, then thats when it still has a next.
 
     //what if entire block allocated, so free head only free block?
@@ -279,25 +274,26 @@ void *umalloc(size_t size) {
         // if ((uint64_t) free_head == (uint64_t) mblock) {
         //     //no need to do a null check since mblock->next checked already.
         //     free_head = mblock -> next;
-        // }
+        // }*/
 
         //remove found block from free list
-        memory_block_t* cur_free = free_head;
+    memory_block_t* cur_free = free_head;
         //did not handle case when mblock == free head
         //    do not need to handle this edge case
-        while (cur_free->next && (uint64_t)cur_free->next != (uint64_t) mblock) {
-            cur_free = cur_free -> next;
-        }
-        if (mblock->next) {
-            cur_free->next = mblock->next;
-            mblock -> next = NULL;
-        } else { //either was a split block or is the last free block
-            if ( check_malloc_output(mblock, ((uint64_t)mblock->block_size_alloc) + 1) ) {
-                cur_free->next=NULL; // is last free block. Set penultimate free block next to null
-            }//else is a split block. Nothing to do.
-        }
+    while (cur_free->next && (uint64_t)cur_free->next != (uint64_t) mblock) {
+        cur_free = cur_free -> next;
+    }
+    if (mblock->next) {
+        cur_free->next = mblock->next;
+        mblock -> next = NULL;
+    } else { //either was a split block or is the last free block
+        if ( check_malloc_output(mblock, ((uint64_t)mblock->block_size_alloc)) ) {
+            cur_free->next=NULL; 
+            // is last free block. Set penultimate free block next to null
+        }//else is a split block. Nothing to do.
+    }
     //no magic number handling
-    return mblock;
+    return (void*) ((uint64_t) mblock);
 }
 
 /*
