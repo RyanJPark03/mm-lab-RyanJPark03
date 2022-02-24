@@ -185,10 +185,10 @@ memory_block_t *split(memory_block_t *block, size_t size) {
     block->block_size_alloc = block->block_size_alloc - size;
 
     // preserve allocated status
-    put_block((memory_block_t*) ((uint64_t)block)+(uint64_t)(block->block_size_alloc), size, false);
+    put_block((memory_block_t*) (((uint64_t)block)+(uint64_t)(block->block_size_alloc)+1), size, false);
     // assume the allocated part is free
 
-    return (memory_block_t*) ((uint64_t)block)+(uint64_t)(block->block_size_alloc);
+    return (memory_block_t*) (((uint64_t)block)+(uint64_t)(block->block_size_alloc)+1);
 } // done for now
 
 /*
@@ -225,20 +225,21 @@ int uinit() {
     if (!free_head) {
         free_head = heap;
         search_entry = free_head;
+        free_head->next = NULL;
     }
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
-    memory_block_t* new_arena = (memory_block_t*) heap;
+    // memory_block_t* new_arena = (memory_block_t*) heap;
 
-    if ((uint64_t) new_arena < (uint64_t) free_head) {//new arena is before current arena
-        new_arena -> next = free_head;
-        free_head = new_arena;
-    }else {//new arena comes after current arena
-        memory_block_t* cur_free = free_head;
-        while(cur_free -> next) cur_free = cur_free -> next;
-        cur_free -> next = new_arena;
-    }
+    // if ((uint64_t) new_arena < (uint64_t) free_head) {//new arena is before current arena
+    //     new_arena -> next = free_head;
+    //     free_head = new_arena;
+    // }else {//new arena comes after current arena
+    //     memory_block_t* cur_free = free_head;
+    //     while(cur_free -> next) cur_free = cur_free -> next;
+    //     cur_free -> next = new_arena;
+    // }
 
     //set next of freeblock to self for circular linked list
     //not dealing with circular linked list for now
@@ -261,9 +262,9 @@ void *umalloc(size_t size) {
     while (size % ALIGNMENT != 0) size++;
     //find right block
     memory_block_t* mblock = find(size);
+    
     //set memory block as allocated
-    assert(!(get_size(mblock) & 0x1)); //assert block is not already allocated
-    mblock->block_size_alloc += 1;
+    mblock->block_size_alloc = mblock->block_size_alloc | 0x1;
 
     //only need to remove from free list if found block was not split. Split makes the returned block's
     //next = NULL. If i find a whole free block, then thats when it still has a next.
