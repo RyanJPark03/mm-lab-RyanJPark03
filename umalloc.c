@@ -17,7 +17,7 @@ const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 memory_block_t *free_head;
 
 //pointer to search spot in free ist
-memory_block_t *search_entry;
+//memory_block_t *search_entry;
 
 /*
  * is_allocated - returns true if a block is marked as allocated.
@@ -101,39 +101,57 @@ memory_block_t *get_block(void *payload) {
  */
 memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
-    memory_block_t* cur = search_entry;
-
+    //memory_block_t* cur = search_entry;
+    memory_block_t* cur = free_head;
+    
     if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-        if ((uint64_t) cur == (uint64_t) free_head) {
+        if (cur->next) {
             cur = cur->next;
         } else {
-            search_entry = (cur->next) ? get_next(cur) : free_head;
-            
-            memory_block_t* temp = free_head;
-            while (temp -> next != cur) temp = temp->next;
-            temp->next = cur->next;
-
-            return cur;
-        } 
+            int size_multiplier = 1;
+            while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+            extend(size_multiplier*PAGESIZE);
+            //line below could cause error if uinit csbrk size is not big enough for the requested size
+            return find(size);
+        }
     } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-        search_entry = (cur->next) ? get_next(cur) : free_head;
         return split(cur, size);
     }
+
+    // if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
+    //     if ((uint64_t) cur == (uint64_t) free_head) {
+    //         cur = cur->next;
+    //     } else {
+    //         //search_entry = (cur->next) ? cur->next : free_head;
+            
+    //         memory_block_t* temp = free_head;
+    //         while (temp -> next != cur) temp = temp->next;
+    //         temp->next = cur->next;
+
+    //         return cur;
+    //     } 
+    // } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
+    //     //search_entry = (cur->next) ? get_next(cur) : free_head;
+    //     return split(cur, size);
+    // }
     
-    while(cur && (uint64_t) cur != (uint64_t) search_entry){
-        cur->block_size_alloc = cur->block_size_alloc & ~(ALIGNMENT - 1);
+    while(cur /*&& (uint64_t) cur != (uint64_t) search_entry*/ ){
+        //cur->block_size_alloc = cur->block_size_alloc & ~(ALIGNMENT - 1);
         if (get_size(cur) < size) {
-            cur = (cur->next) ? get_next(cur) : free_head;
+            //cur = (cur->next) ? get_next(cur) : free_head;
+            cur = cur -> next;
         } else if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-            search_entry = (cur->next) ? get_next(cur) : free_head;
+            //search_entry = (cur->next) ? get_next(cur) : free_head;
 
             memory_block_t* temp = free_head;
             while (temp -> next != cur) temp = temp->next;
             temp->next = cur->next;
+            cur->next = NULL;
+            allocate(cur);
 
             return cur;
         } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-            search_entry = (cur->next) ? get_next(cur) : free_head;
+            //search_entry = (cur->next) ? get_next(cur) : free_head;
             return split(cur, size);
         }
     }
@@ -236,7 +254,7 @@ int uinit() {
     //set beginning of free list to beginning of arena
     if (!free_head) {
         free_head = heap;
-        search_entry = free_head;
+        //search_entry = free_head;
         free_head->next = NULL;
     }
 
