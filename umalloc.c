@@ -327,12 +327,13 @@ void ufree(void *ptr) {
 
     //typecast for ease
     //assume void* ptr points to the payload, so convert to header pointer
-    memory_block_t* new_free_block = (memory_block_t*) (((uint64_t) ptr) - 16);
+    memory_block_t* new_free_block = (memory_block_t*) ((uint64_t) ptr);
     //reset allocated flag
     new_free_block -> block_size_alloc = new_free_block -> block_size_alloc & ~(0x1);
 
     //look for the two free blocks to place the new one in between
     memory_block_t* cur_free_block = free_head;
+
     while (cur_free_block && cur_free_block -> next) {
         if ((uint64_t) cur_free_block < (uint64_t) new_free_block &&
             (uint64_t) new_free_block < (uint64_t) (cur_free_block -> next)) {
