@@ -130,12 +130,10 @@ memory_block_t *find(size_t size) { //size is size of header and payload
         }
     }
     
-    //none of the current free blocks are big enough. Request one that is big enough.
-    //what if 4*pagesize is not big enough, but 5*pagesize is?
     int size_multiplier = 1;
     while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+    //if size multiplier is > 16, csbrk will shit the bed for me
     extend(size_multiplier*PAGESIZE);
-    //line below could cause error if uinit csbrk size is not big enough for the requested size
     return find(size);
 }
 
@@ -143,7 +141,6 @@ memory_block_t *find(size_t size) { //size is size of header and payload
  * extend - extends the heap if more memory is required.
  */
 memory_block_t *extend(size_t size) {
-    //* STUDENT TODO 
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return NULL;
@@ -231,10 +228,6 @@ int uinit() {
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
-
-    //set next of freeblock to self for circular linked list
-    //not dealing with circular linked list for now
-    // (memory_block_t*) free_head -> next = (memory_block_t*) heap;
 
     return 0;
 }

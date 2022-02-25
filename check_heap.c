@@ -16,7 +16,8 @@ extern sbrk_block *sbrk_blocks;
  *        They should also be allocated as free.
  *      - Check if any memory_blocks (free and allocated) overlap with each other.
   Hint: Run through the heap sequentially and check that
- *        for some memory_block n, memory_block n+1 has a sensible block_size and is within the valid heap addresses.
+ *        for some memory_block n, memory_block n+1 has a sensible block_size 
+ and is within the valid heap addresses.
  *      - Ensure that each memory_block is aligned. 
  * 
  * Should return 0 if the heap is still consistent, otherwise return a non-zero
@@ -25,36 +26,42 @@ extern sbrk_block *sbrk_blocks;
 int check_heap() {
         //check all free blocks
         memory_block_t *cur = free_head;
-        while (cur) {
-            if (is_allocated(cur) || check_malloc_output(cur, cur->block_size_alloc)) {
-                return -1;
+        do {
+            if (is_allocated(cur)) {
+                //checks if pointers in free list point to valid free blocks
             }
+            //next is null check
+            if (!cur->next) return -1;
             cur=cur->next;
-        }
+        } while ((uint64_t) cur != (uint64_t) free_head);
 
-        //check overlap
-        //loop through all arenas
-        sbrk_block* cur_arena = sbrk_blocks;
-        while (cur_arena) {
+        sbrk_block* cur_arena = sbrk_blocks[0];
+        
 
-            //loop through all blocks in arena
-            uint64_t cur_block = (uint64_t) cur_arena -> sbrk_start;
-            int cur_block_size = get_size((memory_block_t*) cur_block);
-            while (cur_block + cur_block_size <= cur_arena -> sbrk_end) {
 
-                    //alignment check
-                    if (! (cur_block % ALIGNMENT) || 
-                        ! (cur_block_size % ALIGNMENT) ) {
-                        return -1;
-                    }
-                //increment arena and check if in bounds (if header corrupted or incorrect,
-                // could end up out of bounds)
-                cur_block = cur_block + (cur_block_size & ~(0x1));
+        // //check overlap
+        // //loop through all arenas
+        // sbrk_block* cur_arena = sbrk_blocks;
+        // while (cur_arena) {
 
-                if (check_malloc_output((memory_block_t*) cur_block, cur_block_size)) return -1;
-                cur_block_size = get_size((memory_block_t*) cur_block);
-                }
-        }
+        //     //loop through all blocks in arena
+        //     uint64_t cur_block = (uint64_t) cur_arena -> sbrk_start;
+        //     int cur_block_size = get_size((memory_block_t*) cur_block);
+        //     while (cur_block + cur_block_size <= cur_arena -> sbrk_end) {
+
+        //             //alignment check
+        //             if (! (cur_block % ALIGNMENT) || 
+        //                 ! (cur_block_size % ALIGNMENT) ) {
+        //                 return -1;
+        //             }
+        //         //increment arena and check if in bounds (if header corrupted or incorrect,
+        //         // could end up out of bounds)
+        //         cur_block = cur_block + (cur_block_size & ~(0x1));
+
+        //         if (check_malloc_output((memory_block_t*) cur_block, cur_block_size)) return -1;
+        //         cur_block_size = get_size((memory_block_t*) cur_block);
+        //         }
+        // }
 
     return 0;
 }
