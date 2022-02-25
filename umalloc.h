@@ -24,14 +24,16 @@ typedef struct memory_block_struct {
 *      Don't just repeat the name of the function back to us.
 */
 
-//returns true if memory block has been allocated
+//returns true if memory block has been allocated, checking
+//if least significant bit in size field is 1 (allocated) or 0
 bool is_allocated(memory_block_t *block);
-//changes header of memory block to match that of an allocated memory block
+//changes header of memory block to match that of an allocated memory block,
+//keeps header if already allocated..
 void allocate(memory_block_t *block);
-//changes header ofmemory block to match that of an unallocated memory block
-//also changes free lsit
+//changes header (least significant bit) of memory block to match that
+//of an unallocated memory block
 void deallocate(memory_block_t *block);
-//returns size of memory block
+//returns size of memory block (accounts for flags and returns an ALIGNED number)
 size_t get_size(memory_block_t *block);
 //returns a pointer to the memory block pointed to by the input memory block
 memory_block_t *get_next(memory_block_t *block);

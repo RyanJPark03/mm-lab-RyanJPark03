@@ -220,6 +220,7 @@ int uinit() {
     } //could I ever go out of bounds?
 
     //set beginning of free list to beginning of arena
+    //free list is null terminated
     if (!free_head) {
         free_head = heap;
         search_entry = free_head;
