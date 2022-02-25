@@ -133,7 +133,9 @@ memory_block_t *find(size_t size) { //size is size of header and payload
     int size_multiplier = 1;
     while (size_multiplier * PAGESIZE <= size) size_multiplier++;
     //if size multiplier is > 16, csbrk will shit the bed for me
+    // memory_block_t* new_arena_block = 
     extend(size_multiplier*PAGESIZE);
+
     return find(size);
 }
 
@@ -149,7 +151,7 @@ memory_block_t *extend(size_t size) {
     int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
-        (uint64_t) heap++;
+        heap = (void*) (((uint64_t)heap)+1);
     } //could I ever go out of bounds?
 
     //make the new arena a freeblock
@@ -166,7 +168,7 @@ memory_block_t *extend(size_t size) {
         cur_free -> next = new_arena;
     }
     return new_arena;
-}
+} // INCORRECT_---------------------------------------------------------------------------------------------
 
 /*
  *  STUDENT TODO:
@@ -206,14 +208,14 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    int size = 4 * PAGESIZE; 
+    uint64_t size = 1 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return -1;
 
     //check for block alignment
-    int offset = 0;
+    uint64_t offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
         heap = (void*) (((uint64_t)heap)+1);

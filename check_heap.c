@@ -34,16 +34,22 @@ int check_heap() {
             cur=cur->next;
         } while (cur);
 
-        sbrk_block* cur_arena = &sbrk_blocks[0];
-        memory_block_t* cur_block = (memory_block_t*) cur_arena->sbrk_start;
+        sbrk_block* cur_arena = sbrk_blocks;
         
         while (cur_arena) {
-            cur_block = (memory_block_t*) cur_arena->sbrk_start;
-            while ( (uint64_t) cur_block >= cur_arena->sbrk_start && 
-                    (uint64_t) cur_block < cur_arena->sbrk_end) {
+            memory_block_t* cur_block = (memory_block_t*) (cur_arena->sbrk_start);
+             while (cur_block->next) {
+
+                printf("Arena Start: %lu    \nArena End: %lu       \nCur_Block: %lu  \nSize of Arena: %lu                      \nSize of cur block: %lu\n",
+                     cur_arena->sbrk_start, cur_arena->sbrk_end, (uint64_t)cur_block, (uint64_t) cur_arena->sbrk_start - (uint64_t) cur_arena->sbrk_end, cur_block->next->block_size_alloc & ~(0x1));
+
                 //checks if block is inside an arena
-                printf("infinite loop? size = %lu\n", get_size(cur_block));
-                if (check_malloc_output(cur_block, get_size(cur_block))) return -1;
+                unsigned long block_size = get_size(cur_block->next);
+                unsigned long arena_size = cur_arena->sbrk_start - cur_arena->sbrk_end;
+                
+                if (!check_malloc_output((cur_block->next + 1), block_size - sizeof(memory_block_t))) {
+                    if (block_size <= 0 || block_size > arena_size) return -1;
+                }
                 //get size is 0...
                 //checks alignment
                 if ((uint64_t) cur_block % ALIGNMENT != 0) return -1;
@@ -54,8 +60,8 @@ int check_heap() {
             //checks to make sure block ends at end of heap. Checks overlap, since if overlap is
             //occurring, the size field will be corrupted, leading to an instance in which the rvalue
             //of cur_block does not coincide with the last address of the heap.
-            if ((uint64_t) cur_block != cur_arena->sbrk_end) return -1;
-            cur_arena = cur_arena -> next;
+            // if ((uint64_t) cur_block <= cur_arena->sbrk_end) return -1;
+            cur_arena = cur_arena->next;
         }
 
     return 0;
