@@ -1,3 +1,4 @@
+
 #include "umalloc.h"
 #include "csbrk.h"
 #include "ansicolors.h"
@@ -130,12 +131,12 @@ memory_block_t *find(size_t size) { //size is size of header and payload
         }
     }
     
+    //none of the current free blocks are big enough. Request one that is big enough.
+    //what if 4*pagesize is not big enough, but 5*pagesize is?
     int size_multiplier = 1;
     while (size_multiplier * PAGESIZE <= size) size_multiplier++;
-    //if size multiplier is > 16, csbrk will shit the bed for me
-    // memory_block_t* new_arena_block = 
     extend(size_multiplier*PAGESIZE);
-
+    //line below could cause error if uinit csbrk size is not big enough for the requested size
     return find(size);
 }
 
@@ -143,6 +144,7 @@ memory_block_t *find(size_t size) { //size is size of header and payload
  * extend - extends the heap if more memory is required.
  */
 memory_block_t *extend(size_t size) {
+    //* STUDENT TODO 
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return NULL;
@@ -151,7 +153,7 @@ memory_block_t *extend(size_t size) {
     int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
-        heap = (void*) (((uint64_t)heap)+1);
+        (uint64_t) heap++;
     } //could I ever go out of bounds?
 
     //make the new arena a freeblock
@@ -168,7 +170,7 @@ memory_block_t *extend(size_t size) {
         cur_free -> next = new_arena;
     }
     return new_arena;
-} // INCORRECT_---------------------------------------------------------------------------------------------
+}
 
 /*
  *  STUDENT TODO:
@@ -208,21 +210,20 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    uint64_t size = 1 * PAGESIZE; 
+    int size = 8 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return -1;
 
     //check for block alignment
-    uint64_t offset = 0;
+    int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
         heap = (void*) (((uint64_t)heap)+1);
     } //could I ever go out of bounds?
 
     //set beginning of free list to beginning of arena
-    //free list is null terminated
     if (!free_head) {
         free_head = heap;
         search_entry = free_head;
@@ -231,6 +232,10 @@ int uinit() {
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
+
+    //set next of freeblock to self for circular linked list
+    //not dealing with circular linked list for now
+    // (memory_block_t*) free_head -> next = (memory_block_t*) heap;
 
     return 0;
 }

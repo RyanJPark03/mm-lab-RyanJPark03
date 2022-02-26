@@ -28,20 +28,20 @@ extern sbrk_block *sbrk_blocks;
 int check_heap() {
         //check all free blocks
         memory_block_t *cur = free_head;
-         while (cur) {
+        while (cur) {
             //checks if pointers in free list point to valid free blocks
-            if (cur->block_size_alloc & 0x1) return -1;
+            if (is_allocated(cur)) return -1;
             cur=cur->next;
         }
         
         memory_block_t* cur_arena = (memory_block_t*) sbrk_blocks->sbrk_start;
-        while ((uint64_t)cur_arena < sbrk_blocks->sbrk_end) {
+        while ((uint64_t)cur_arena != sbrk_blocks->sbrk_end) {
             //
-            if ((uint64_t)cur_arena + get_size(cur_arena) > sbrk_blocks->sbrk_end ||
-            ((uint64_t)cur_arena < sbrk_blocks->sbrk_start) ||
-            ((uint64_t)cur_arena % 16 != 0) ||
-            (get_size(cur_arena) > sbrk_blocks->sbrk_end - sbrk_blocks->sbrk_start) ||
-            (get_size(cur_arena) > sbrk_blocks->sbrk_end - sbrk_blocks->sbrk_start)) return -1;
+            if ((uint64_t)cur_arena > sbrk_blocks->sbrk_end) return -1;
+            if ((uint64_t)cur_arena < sbrk_blocks->sbrk_start) return -1;
+            if ((uint64_t)cur_arena % 16 != 0) return -1;
+            if (get_size(cur_arena) > sbrk_blocks->sbrk_end - sbrk_blocks->sbrk_start) return -1;
+
             cur_arena = (memory_block_t*) ((uint64_t)cur_arena + get_size(cur_arena) + 16);
         }
 
