@@ -28,40 +28,21 @@ extern sbrk_block *sbrk_blocks;
 int check_heap() {
         //check all free blocks
         memory_block_t *cur = free_head;
-        do {
+         while (cur) {
             //checks if pointers in free list point to valid free blocks
-            if (is_allocated(cur)) return -1;
+            if (cur->block_size_alloc & 0x1) return -1;
             cur=cur->next;
-        } while (cur);
-
-        sbrk_block* cur_arena = sbrk_blocks;
+        }
         
-        while (cur_arena) {
-            memory_block_t* cur_block = (memory_block_t*) (cur_arena->sbrk_start);
-             while (cur_block->next) {
-
-                printf("Arena Start: %lu    \nArena End: %lu       \nCur_Block: %lu  \nSize of Arena: %lu                      \nSize of cur block: %lu\n",
-                     cur_arena->sbrk_start, cur_arena->sbrk_end, (uint64_t)cur_block, (uint64_t) cur_arena->sbrk_start - (uint64_t) cur_arena->sbrk_end, cur_block->next->block_size_alloc & ~(0x1));
-
-                //checks if block is inside an arena
-                unsigned long block_size = get_size(cur_block->next);
-                unsigned long arena_size = cur_arena->sbrk_start - cur_arena->sbrk_end;
-                
-                if (!check_malloc_output((cur_block->next + 1), block_size - sizeof(memory_block_t))) {
-                    if (block_size <= 0 || block_size > arena_size) return -1;
-                }
-                //get size is 0...
-                //checks alignment
-                if ((uint64_t) cur_block % ALIGNMENT != 0) return -1;
-                
-                cur_block = (memory_block_t*) 
-                    (((uint64_t) cur_block)+get_size(cur_block));
-            }
-            //checks to make sure block ends at end of heap. Checks overlap, since if overlap is
-            //occurring, the size field will be corrupted, leading to an instance in which the rvalue
-            //of cur_block does not coincide with the last address of the heap.
-            // if ((uint64_t) cur_block <= cur_arena->sbrk_end) return -1;
-            cur_arena = cur_arena->next;
+        memory_block_t* cur_arena = (memory_block_t*) sbrk_blocks->sbrk_start;
+        while ((uint64_t)cur_arena < sbrk_blocks->sbrk_end) {
+            //
+            if ((uint64_t)cur_arena + get_size(cur_arena) > sbrk_blocks->sbrk_end ||
+            ((uint64_t)cur_arena < sbrk_blocks->sbrk_start) ||
+            ((uint64_t)cur_arena % 16 != 0) ||
+            (get_size(cur_arena) > sbrk_blocks->sbrk_end - sbrk_blocks->sbrk_start) ||
+            (get_size(cur_arena) > sbrk_blocks->sbrk_end - sbrk_blocks->sbrk_start)) return -1;
+            cur_arena = (memory_block_t*) ((uint64_t)cur_arena + get_size(cur_arena) + 16);
         }
 
     return 0;
