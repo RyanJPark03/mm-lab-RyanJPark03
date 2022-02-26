@@ -210,7 +210,7 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    int size = 8 * PAGESIZE; 
+    int size = 5 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
@@ -232,10 +232,6 @@ int uinit() {
 
     //make the new arena a freeblock
     put_block(heap, size - offset, 0);
-
-    //set next of freeblock to self for circular linked list
-    //not dealing with circular linked list for now
-    // (memory_block_t*) free_head -> next = (memory_block_t*) heap;
 
     return 0;
 }
