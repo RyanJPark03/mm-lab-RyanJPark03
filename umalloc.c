@@ -5,7 +5,7 @@
 #include <assert.h>
 
 //size in memory_block_t includes header size.
-const int SPLIT_THRESHOLD = 32; //minimum size for a split (16 + 16) for another header+payload combo
+const int SPLIT_THRESHOLD = 64; //minimum size for a split (16 + 16) for another header+payload combo
 const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 
 /*
@@ -113,8 +113,8 @@ memory_block_t *find(size_t size) { //size is size of header and payload
     }
 
     if (get_size(worst_fit_block) < size) {
-        int size_multiplier = 1;
-        while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+        int size_multiplier = 7;
+        // while (size_multiplier * PAGESIZE <= size) size_multiplier++;
         //inefficient. Looks through list again.
         extend(size_multiplier*PAGESIZE);
         return find(size);
@@ -232,7 +232,6 @@ int uinit() {
     //set beginning of free list to beginning of arena
     if (!free_head) {
         free_head = heap;
-        // search_entry = free_head;
         free_head->next = NULL;
     }
 
