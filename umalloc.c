@@ -1,4 +1,3 @@
-
 #include "umalloc.h"
 #include "csbrk.h"
 #include "ansicolors.h"
@@ -102,43 +101,6 @@ memory_block_t *get_block(void *payload) {
  */
 memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
-    // memory_block_t* cur = search_entry;
-    // //with search entry code
-    // while((uint64_t) cur->next != (uint64_t) search_entry){
-    //     if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-    //     //we don't want to give up free head
-    //         if ((uint64_t) cur == (uint64_t) free_head && cur->next) { 
-    //             //search from the next free block
-    //             cur = cur -> next;
-    //         } else if ((uint64_t) cur == (uint64_t) free_head) {
-    //             //free head is the only remaining free block that works
-    //             //extend, search again
-    //             extend(4*PAGESIZE);
-    //             return find(size);
-    //         } else {
-    //             //cur is not the free head, so we can just return after handling pointers
-    //             remove_from_free_list(cur); // must write
-    //             return cur;
-    //         }
-    //     } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-    //     //cur must be split, no pointers to handle.
-    //         search_entry = (cur->next) ? get_next(cur) : free_head;
-    //         return split(cur, size);
-    //     } else {
-    //     //cur is too small, go to next
-    //         cur = cur -> next;
-    //     }
-    // }
-    
-    // //none of the current free blocks are big enough. Request one that is big enough.
-    // //what if 4*pagesize is not big enough, but 5*pagesize is?
-    // int size_multiplier = 1;
-    // while (size_multiplier * PAGESIZE <= size) size_multiplier++;
-    // extend(size_multiplier*PAGESIZE);
-    // //line below could cause error if uinit csbrk size is not big enough for the requested size
-    // return find(size);
-
-
     memory_block_t* cur_block = free_head;
     //worst fit will find biggest block
     memory_block_t* worst_fit_block = free_head;
