@@ -18,7 +18,7 @@ const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 memory_block_t *free_head;
 
 //pointer to search spot in free ist
-memory_block_t *search_entry;
+// memory_block_t *search_entry;
 
 /*
  * is_allocated - returns true if a block is marked as allocated.
@@ -102,42 +102,83 @@ memory_block_t *get_block(void *payload) {
  */
 memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
-    memory_block_t* cur = search_entry;
-
-    //with search entry code
-    while(cur && (uint64_t) cur->next != (uint64_t) search_entry){
-        if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
-        //we don't want to give up free head
-            if ((uint64_t) cur == (uint64_t) free_head && cur->next) { 
-                //search from the next free block
-                cur = cur -> next;
-            } else if ((uint64_t) cur == (uint64_t) free_head) {
-                //free head is the only remaining free block that works
-                //extend, search again
-                extend(4*PAGESIZE);
-                return find(size);
-            } else {
-                //cur is not the free head, so we can just return after handling pointers
-                remove_from_free_list(cur); // must write
-                return cur;
-            }
-        } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
-        //cur must be split, no pointers to handle.
-            search_entry = (cur->next) ? get_next(cur) : free_head;
-            return split(cur, size);
-        } else {
-        //cur is too small, go to next
-            cur = cur -> next;
-        }
-    }
+    // memory_block_t* cur = search_entry;
+    // //with search entry code
+    // while((uint64_t) cur->next != (uint64_t) search_entry){
+    //     if (get_size(cur) >= size && get_size(cur) - SPLIT_THRESHOLD <= size) {
+    //     //we don't want to give up free head
+    //         if ((uint64_t) cur == (uint64_t) free_head && cur->next) { 
+    //             //search from the next free block
+    //             cur = cur -> next;
+    //         } else if ((uint64_t) cur == (uint64_t) free_head) {
+    //             //free head is the only remaining free block that works
+    //             //extend, search again
+    //             extend(4*PAGESIZE);
+    //             return find(size);
+    //         } else {
+    //             //cur is not the free head, so we can just return after handling pointers
+    //             remove_from_free_list(cur); // must write
+    //             return cur;
+    //         }
+    //     } else if (get_size(cur) - SPLIT_THRESHOLD >= size) {
+    //     //cur must be split, no pointers to handle.
+    //         search_entry = (cur->next) ? get_next(cur) : free_head;
+    //         return split(cur, size);
+    //     } else {
+    //     //cur is too small, go to next
+    //         cur = cur -> next;
+    //     }
+    // }
     
-    //none of the current free blocks are big enough. Request one that is big enough.
-    //what if 4*pagesize is not big enough, but 5*pagesize is?
-    int size_multiplier = 1;
-    while (size_multiplier * PAGESIZE <= size) size_multiplier++;
-    extend(size_multiplier*PAGESIZE);
-    //line below could cause error if uinit csbrk size is not big enough for the requested size
-    return find(size);
+    // //none of the current free blocks are big enough. Request one that is big enough.
+    // //what if 4*pagesize is not big enough, but 5*pagesize is?
+    // int size_multiplier = 1;
+    // while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+    // extend(size_multiplier*PAGESIZE);
+    // //line below could cause error if uinit csbrk size is not big enough for the requested size
+    // return find(size);
+
+
+    memory_block_t* cur_block = free_head;
+    //worst fit will find biggest block
+    memory_block_t* worst_fit_block = free_head;
+
+    while (cur_block) {
+        if (get_size(cur_block) >= get_size(worst_fit_block)) {
+            worst_fit_block = cur_block;
+        }
+        cur_block = get_next(cur_block);
+    }
+
+    if (get_size(worst_fit_block) < size) {
+        int size_multiplier = 1;
+        while (size_multiplier * PAGESIZE <= size) size_multiplier++;
+        //inefficient. Looks through list again.
+        extend(size_multiplier*PAGESIZE);
+        return find(size);
+        //no pointers to handle here. all handled in extend.
+    } else if (get_size(worst_fit_block) >= size + SPLIT_THRESHOLD) {
+        return split(worst_fit_block, size);
+        //again, no pointers here. free list doesn't change, give split portion of biggest free block
+    } else {
+        if ((uint64_t)free_head == (uint64_t)worst_fit_block) {
+            memory_block_t* old_free_head = free_head;
+            //if we can move freehead to a new freeblock do so. If not, create more space.
+            free_head = (get_next(free_head)) ? get_next(free_head) : extend(PAGESIZE);
+            //if extend has been called and free head as been moved
+            //since I'm giving up the old freehead, handle pointers.
+            if ((uint64_t)free_head < (uint64_t)old_free_head) {
+                free_head -> next = get_next(old_free_head);
+            }
+        } else {
+            cur_block = free_head;
+            while ((uint64_t) (get_next(cur_block)) != (uint64_t) worst_fit_block) 
+                cur_block = get_next(cur_block);
+            cur_block->next=get_next(worst_fit_block);
+        }
+        return worst_fit_block;
+    }
+
 }
 
 /*
@@ -153,11 +194,11 @@ memory_block_t *extend(size_t size) {
     int offset = 0;
     while ((uint64_t) heap % ALIGNMENT != 0) {
         offset++;
-        (uint64_t) heap++;
+        heap = (void*) (((uint64_t)heap) + 1);
     } //could I ever go out of bounds?
 
     //make the new arena a freeblock
-    put_block(heap, size - offset, 0);
+    put_block(heap, size - offset, false);
     memory_block_t* new_arena = (memory_block_t*) heap;
 
     if ((uint64_t) new_arena < (uint64_t) free_head) {
@@ -186,13 +227,16 @@ memory_block_t *extend(size_t size) {
 memory_block_t *split(memory_block_t *block, size_t size) {
 
     //update size of free block
-    block->block_size_alloc = get_size(block) - size;
-    
+    //use direct block->size to preserve flag status
+    block->block_size_alloc = block->block_size_alloc - size;
+
+    memory_block_t* split_allocated = (memory_block_t*) (((uint64_t) block)+get_size(block));
+
     // preserve allocated status
-    put_block((memory_block_t*) (((uint64_t) block)+get_size(block)), size, true);
+    put_block(split_allocated, size, true);
     // assume the allocated part is free
 
-    return (memory_block_t*) (((uint64_t) block)+get_size(block));
+    return split_allocated; 
 }
 
 /*
@@ -200,8 +244,8 @@ memory_block_t *split(memory_block_t *block, size_t size) {
  */
  //ONLY DOES LEFT COALESCING. ALL COALESCE CASES CAN BE MADE INTO LEFT COALESCING CASES
 memory_block_t *coalesce(memory_block_t *block) {
-    block -> block_size_alloc += get_size((memory_block_t*) 
-        (((uint64_t) block) + get_size(block)));
+    memory_block_t* next_block = get_next(block);
+    block -> block_size_alloc += get_size(next_block);
     return block;
 }
 
@@ -210,7 +254,7 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    int size = 5 * PAGESIZE; 
+    int size = 4 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
@@ -226,7 +270,7 @@ int uinit() {
     //set beginning of free list to beginning of arena
     if (!free_head) {
         free_head = heap;
-        search_entry = free_head;
+        // search_entry = free_head;
         free_head->next = NULL;
     }
 
@@ -246,10 +290,8 @@ int uinit() {
 void *umalloc(size_t size) {
     //* STUDENT TODO
     
-    //make size a data aligned size
-    while (size % ALIGNMENT != 0) size++;
-    //find right block
-    memory_block_t* mblock = find(size);
+    //find right block, add 16 for header size
+    memory_block_t* mblock = find(ALIGN(size) + sizeof(memory_block_t));
     
     //set memory block as allocated
     allocate(mblock);
@@ -257,7 +299,9 @@ void *umalloc(size_t size) {
     //magic number
     mblock->next = (memory_block_t*) 0xDEADBEEF;
 
-    return (void*) ((uint64_t) mblock);
+    // return (void*) ((uint64_t) mblock);
+    //should be:
+    return get_payload(mblock);
 }
 
 /*
@@ -274,68 +318,48 @@ void *umalloc(size_t size) {
 void ufree(void *ptr) {
     //* STUDENT TODO
 
-    //make sure I'm not double freeing
-    //what if entire block is allocated, free head null
-    //free head is not at beginning of csbrk block
-    //    meaning free head must be moved.
-
     //typecast for ease
     //assume void* ptr points to the payload, so convert to header pointer
     memory_block_t* new_free_block = (memory_block_t*) ((uint64_t) ptr);
+
+    //check to make sure I've been passed an allocated block
+    //also stops double frees
+    if ((uint64_t) new_free_block->next != 0xDEADBEEF) return;
+
     //reset allocated flag
-    new_free_block -> block_size_alloc = new_free_block -> block_size_alloc & ~(0x1);
+    deallocate(new_free_block);
 
     //look for the two free blocks to place the new one in between
     memory_block_t* cur_free_block = free_head;
 
-    while (cur_free_block && cur_free_block -> next) {
+    while (cur_free_block) {
+        //hit end of list
+        if (!(cur_free_block->next)) {
+            cur_free_block->next=new_free_block;
+            new_free_block->next=NULL;
+            break;
+        }
+
         if ((uint64_t) cur_free_block < (uint64_t) new_free_block &&
             (uint64_t) new_free_block < (uint64_t) (cur_free_block -> next)) {
-                if (((uint64_t) new_free_block) + ((uint64_t) new_free_block -> block_size_alloc) ==
+                //check right coalesce
+                if (((uint64_t) new_free_block) + get_size(new_free_block) ==
                     (uint64_t) get_next(cur_free_block) ) {
+                    //end of new free block is beginning of next free block
                     coalesce(new_free_block);
                     new_free_block->next = cur_free_block->next->next;
-                    cur_free_block->next = new_free_block;
-                    //maybe free coalesced block
-                } else {
+                } else 
                     new_free_block -> next = cur_free_block -> next;
-                    cur_free_block -> next = new_free_block;
-                }
-                if (((uint64_t) cur_free_block) + ((uint64_t) cur_free_block -> block_size_alloc) ==
-                    (uint64_t) new_free_block ) {
+                // cur_free_block -> next = new_free_block;
+                //check left coalesce
+                if (((uint64_t) cur_free_block) + get_size(cur_free_block) ==
+                    (uint64_t) new_free_block) {
                     coalesce(cur_free_block);
                     cur_free_block -> next = new_free_block -> next;
-                } else {
+                } else
                     cur_free_block -> next = new_free_block;
-                }
             break;
-        } else cur_free_block = cur_free_block -> next;
+        } else 
+            cur_free_block = cur_free_block -> next;
     }
-
-    //the new free block belongs at the end
-    if ( !(cur_free_block -> next) ) {
-        if (((uint64_t) cur_free_block) + ((uint64_t) cur_free_block -> block_size_alloc) ==
-            (uint64_t) new_free_block) {
-                coalesce(cur_free_block);
-        } else {
-            cur_free_block -> next = new_free_block;
-            new_free_block -> next = NULL;
-        }
-   }
-}
-
-/*
-removes the input free block from the free list
-*/
-void remove_from_free_list(memory_block_t* remove) {
-    assert(!is_allocated(remove));
-    assert(remove);
-
-    //find previous free block
-    memory_block_t* temp = free_head;
-    while ((uint64_t) temp->next != (uint64_t) remove) temp = get_next(temp);
-    //skip block to remove
-    temp->next = remove->next;
-    //null out next pointer of block to remove
-    remove->next = NULL;
 }

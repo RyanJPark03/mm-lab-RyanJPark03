@@ -53,10 +53,6 @@ memory_block_t *split(memory_block_t *block, size_t size);
 //combines the input memory block with a neighboring memory block
 memory_block_t *coalesce(memory_block_t *block);
 
-//custom functions
-//removes the input free block from the free list
-void remove_from_free_list(memory_block_t* remove);
-
 // Portion that may not be edited
 int uinit();
 void *umalloc(size_t size);
