@@ -5,7 +5,7 @@
 #include <assert.h>
 
 //size in memory_block_t includes header size.
-const int SPLIT_THRESHOLD = 64; //minimum size for a split (16 + 16) for another header+payload combo
+const int SPLIT_THRESHOLD = 32; //minimum size for a split (16 + 16) for another header+payload combo
 const char author[] = ANSI_BOLD ANSI_COLOR_RED "Ryan Park rjp2764" ANSI_RESET;
 
 /*
@@ -103,44 +103,65 @@ memory_block_t *find(size_t size) { //size is size of header and payload
     //? STUDENT TODO
     memory_block_t* cur_block = free_head;
     //worst fit will find biggest block
-    memory_block_t* worst_fit_block = free_head;
+    memory_block_t* best_fit_block = free_head;
 
-    while (cur_block) {
-        if (get_size(cur_block) >= get_size(worst_fit_block)) {
-            worst_fit_block = cur_block;
+    //if possible, coalesce
+    if (((uint64_t) cur_block) + get_size(cur_block) == (uint64_t) get_next(cur_block)) {
+        coalesce(cur_block);
+    }
+
+    //if free head is the one to give away check:
+    if (get_size(cur_block) >= size && get_size(cur_block) <=  size + SPLIT_THRESHOLD) {
+        //free head not the only one in list. Just increment free head to next freeblock.
+        if (get_next(free_head)) {
+            free_head = get_next(free_head);
+        } else { // freehead is last one. So I need to extend and do pointer properly.
+            if ((uint64_t)extend(16*PAGESIZE) < (uint64_t) cur_block ) {
+                free_head->next = NULL;
+            } else {
+                free_head = free_head -> next;
+            }
+        }
+        return cur_block;
+    }
+
+    //handles case when free-head is the only block left in the list
+    if (!get_next(cur_block)) {
+        //this block is the only one in the list.
+        if (get_size(cur_block) < size) return split(extend(16*PAGESIZE), size);
+        else if (get_size(cur_block) >= size + SPLIT_THRESHOLD) return split(cur_block, size);
+        else {
+            if ((uint64_t)extend(16*PAGESIZE) < (uint64_t) cur_block ) {
+                free_head->next = NULL;
+            } else {
+                free_head = free_head -> next;
+            }
+            return cur_block;
+        }
+    }
+
+    while (get_next(cur_block)) {
+        if ((uint64_t) get_next(cur_block) + get_size(get_next(cur_block)) ==
+             (uint64_t) get_next(get_next(cur_block))) {
+            coalesce(get_next(cur_block));
+        }
+        if (get_size(get_next(cur_block)) >= size &&
+             get_size(get_next(cur_block)) <=  size + SPLIT_THRESHOLD) {
+            cur_block->next = get_next(get_next(cur_block));
+            return cur_block;
+        } else if (get_size(get_next(cur_block)) < get_size(get_next(best_fit_block))) {
+            best_fit_block = cur_block;
         }
         cur_block = get_next(cur_block);
     }
 
-    if (get_size(worst_fit_block) < size) {
-        int size_multiplier = 7;
-        // while (size_multiplier * PAGESIZE <= size) size_multiplier++;
-        //inefficient. Looks through list again.
-        extend(size_multiplier*PAGESIZE);
-        return find(size);
+    if (get_size(get_next(best_fit_block)) < size) {
+        return split(extend(16*PAGESIZE), size);
         //no pointers to handle here. all handled in extend.
-    } else if (get_size(worst_fit_block) >= size + SPLIT_THRESHOLD) {
-        return split(worst_fit_block, size);
-        //again, no pointers here. free list doesn't change, give split portion of biggest free block
-    } else {
-        if ((uint64_t)free_head == (uint64_t)worst_fit_block) {
-            memory_block_t* old_free_head = free_head;
-            //if we can move freehead to a new freeblock do so. If not, create more space.
-            free_head = (get_next(free_head)) ? get_next(free_head) : extend(PAGESIZE);
-            //if extend has been called and free head as been moved
-            //since I'm giving up the old freehead, handle pointers.
-            if ((uint64_t)free_head < (uint64_t)old_free_head) {
-                free_head -> next = get_next(old_free_head);
-            }
-        } else {
-            cur_block = free_head;
-            while ((uint64_t) (get_next(cur_block)) != (uint64_t) worst_fit_block) 
-                cur_block = get_next(cur_block);
-            cur_block->next=get_next(worst_fit_block);
-        }
-        return worst_fit_block;
     }
+    //at this point, we know: get_size(best_fit_block) >= size + SPLIT_THRESHOLD.
 
+    return split(get_next(best_fit_block), size);
 }
 
 /*
@@ -152,17 +173,17 @@ memory_block_t *extend(size_t size) {
     void* heap = csbrk(size);
     if (!heap) return NULL;
 
-    //check for block alignment
     int offset = 0;
-    while ((uint64_t) heap % ALIGNMENT != 0) {
+    while ((uint64_t) heap % ALIGNMENT != 0){
         offset++;
-        heap = (void*) (((uint64_t)heap) + 1);
-    } //could I ever go out of bounds?
+        heap = (memory_block_t*) ((uint64_t) heap + 1);
+    }
 
-    //make the new arena a freeblock
-    put_block(heap, size - offset, false);
+    //make new heap a free block
     memory_block_t* new_arena = (memory_block_t*) heap;
+    put_block(new_arena, size - offset, false);
 
+    //sort free blocks by memory address
     if ((uint64_t) new_arena < (uint64_t) free_head) {
         //new arena is before current arena
         new_arena -> next = free_head;
@@ -171,6 +192,7 @@ memory_block_t *extend(size_t size) {
         memory_block_t* cur_free = free_head;
         while(cur_free -> next) cur_free = cur_free -> next;
         cur_free -> next = new_arena;
+        new_arena -> next = NULL;
     }
     return new_arena;
 }
@@ -187,16 +209,18 @@ memory_block_t *extend(size_t size) {
  * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
+    // printf("size of block to split: %lu\nsize of block to allocate: %lu\n", get_size(block), size);
 
     //update size of free block
     //use direct block->size to preserve flag status
     block->block_size_alloc = block->block_size_alloc - size;
+    
+    //calculate position of next block
+    memory_block_t* split_allocated = (memory_block_t*) 
+            (((uint64_t) block) + get_size(block));
 
-    memory_block_t* split_allocated = (memory_block_t*) (((uint64_t) block)+get_size(block));
-
-    // preserve allocated status
+    //put new block at split location
     put_block(split_allocated, size, true);
-    // assume the allocated part is free
 
     return split_allocated; 
 }
@@ -206,8 +230,11 @@ memory_block_t *split(memory_block_t *block, size_t size) {
  */
  //ONLY DOES LEFT COALESCING. ALL COALESCE CASES CAN BE MADE INTO LEFT COALESCING CASES
 memory_block_t *coalesce(memory_block_t *block) {
-    memory_block_t* next_block = get_next(block);
-    block -> block_size_alloc += get_size(next_block);
+    block->block_size_alloc += get_size(get_next(block));
+    block->next=get_next(get_next(block));
+    if ((uint64_t) block + get_size(block) == (uint64_t) get_next(block)) {
+        coalesce(block);
+    }
     return block;
 }
 
@@ -216,28 +243,26 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    int size = 4 * PAGESIZE; 
+    int size = 16 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
     if (!heap) return -1;
 
-    //check for block alignment
     int offset = 0;
-    while ((uint64_t) heap % ALIGNMENT != 0) {
+    while ((uint64_t) heap % ALIGNMENT != 0){
         offset++;
-        heap = (void*) (((uint64_t)heap)+1);
-    } //could I ever go out of bounds?
+        heap = (memory_block_t*) ((uint64_t) heap + 1);
+    }
+    
+    put_block(heap, size - offset, false);
 
     //set beginning of free list to beginning of arena
     if (!free_head) {
-        free_head = heap;
+        free_head = (memory_block_t*) heap;
         free_head->next = NULL;
     }
-
-    //make the new arena a freeblock
-    put_block(heap, size - offset, 0);
-
+    // printf("start/end of arena: %p, %p\n", free_head, (void*) ((uint64_t) free_head + size - offset));
     return 0;
 }
 
@@ -252,16 +277,15 @@ void *umalloc(size_t size) {
     //* STUDENT TODO
     
     //find right block, add 16 for header size
-    memory_block_t* mblock = find(ALIGN(size) + sizeof(memory_block_t));
-    
+    memory_block_t* mblock = find(ALIGN(size + sizeof(memory_block_t)));
+
     //set memory block as allocated
     allocate(mblock);
 
     //magic number
     mblock->next = (memory_block_t*) 0xDEADBEEF;
 
-    // return (void*) ((uint64_t) mblock);
-    //should be:
+    // printf("returning: %p\n", mblock);
     return get_payload(mblock);
 }
 
@@ -285,42 +309,33 @@ void ufree(void *ptr) {
 
     //check to make sure I've been passed an allocated block
     //also stops double frees
-    if ((uint64_t) new_free_block->next != 0xDEADBEEF) return;
+    if ((uint64_t) new_free_block->next != 0xDEADBEEF ||
+        !is_allocated(new_free_block)) return;
 
     //reset allocated flag
     deallocate(new_free_block);
 
+    //case 1: comes before free head
+    if ((uint64_t) new_free_block < (uint64_t) free_head) {
+        new_free_block->next = free_head;
+        free_head = new_free_block;
+        return;
+    }
+
+    //case 2: comes somewhere in the list by address
     //look for the two free blocks to place the new one in between
     memory_block_t* cur_free_block = free_head;
 
-    while (cur_free_block) {
-        //hit end of list
-        if (!(cur_free_block->next)) {
-            cur_free_block->next=new_free_block;
-            new_free_block->next=NULL;
-            break;
-        }
-
+    while (get_next(cur_free_block)) {
         if ((uint64_t) cur_free_block < (uint64_t) new_free_block &&
             (uint64_t) new_free_block < (uint64_t) (cur_free_block -> next)) {
-                //check right coalesce
-                if (((uint64_t) new_free_block) + get_size(new_free_block) ==
-                    (uint64_t) get_next(cur_free_block) ) {
-                    //end of new free block is beginning of next free block
-                    coalesce(new_free_block);
-                    new_free_block->next = cur_free_block->next->next;
-                } else 
-                    new_free_block -> next = cur_free_block -> next;
-                // cur_free_block -> next = new_free_block;
-                //check left coalesce
-                if (((uint64_t) cur_free_block) + get_size(cur_free_block) ==
-                    (uint64_t) new_free_block) {
-                    coalesce(cur_free_block);
-                    cur_free_block -> next = new_free_block -> next;
-                } else
-                    cur_free_block -> next = new_free_block;
-            break;
+            new_free_block -> next = cur_free_block -> next;
+            cur_free_block -> next = new_free_block;
+            return;
         } else 
             cur_free_block = cur_free_block -> next;
     }
+    //case 3: hit end of list
+    cur_free_block->next=new_free_block;
+    new_free_block->next=NULL;
 }
