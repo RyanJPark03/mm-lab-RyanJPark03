@@ -140,7 +140,7 @@ memory_block_t *find(size_t size) { //size is size of header and payload
 
     // printf("time to extend\n");
     //at this point, we know nothing in the list fits.
-    if (!extend(16*PAGESIZE)) return NULL;
+    if (!extend(3*PAGESIZE)) return NULL;
     return split(get_next(second_head), size);
 }
 
@@ -237,7 +237,7 @@ memory_block_t *coalesce(memory_block_t *block) {
  * along with allocating initial memory.
  */
 int uinit() {
-    int size = 16 * PAGESIZE; 
+    int size = 4 * PAGESIZE; 
 
     //obtain new heap
     void* heap = csbrk(size);
