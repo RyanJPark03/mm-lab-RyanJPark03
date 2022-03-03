@@ -100,21 +100,35 @@ memory_block_t *get_block(void *payload) {
 /*
  * find - finds a free block that can satisfy the umalloc request.
  */
+ //in cp-decl-bal, i think there is an infinite loop in calling extend.
 memory_block_t *find(size_t size) { //size is size of header and payload
     memory_block_t *cur_search = second_head;
+    // printf("second head: %p\n", second_head);
 
     do {//search whole list
+        // printf("cur_search address: %p\n", get_next(cur_search));
+
         int cur_size = get_size(get_next(cur_search));
+
+        // printf("size of cur block: %lu\nsize of block to find: %lu\n",
+        //     (uint64_t) cur_size, (uint64_t) size);
+        
         //if size of next block works, return it
         if (cur_size >= size && cur_size <= size + SPLIT_THRESHOLD) {
+            // printf("perfect fit\n");
+            memory_block_t *found = get_next(cur_search);
+            allocate(found);
             //handle free list pointers
-            cur_search->next = get_next(get_next(cur_search));
+            cur_search->next = get_next(found);
             //do next fit pointer incrementing
-            second_head = cur_search->next;
-            return cur_search;
+            second_head = (is_allocated(get_next(cur_search))) ? 
+                second_head : get_next(cur_search);
+            //what if i have found free_head?
+            return found;
         } else if (cur_size >= size + SPLIT_THRESHOLD) {//next block is too big, split it
+            // printf("time to split\n");
             //increment next fit pointer
-            second_head = get_next(cur_search);
+            second_head = get_next(get_next(cur_search));
             //give newly split block
             return split(get_next(cur_search), size);
         } else {
@@ -123,10 +137,10 @@ memory_block_t *find(size_t size) { //size is size of header and payload
         }
     } while((uint64_t)cur_search!=(uint64_t)second_head);
 
+    // printf("time to extend\n");
     //at this point, we know nothing in the list fits.
-    //lets increment second head anways. It's O(1)
-    second_head = get_next(second_head);
-    return extend(16*PAGESIZE);
+    if (!extend(16*PAGESIZE)) return NULL;
+    return split(get_next(second_head), size);
 }
 
 /*
@@ -142,34 +156,34 @@ memory_block_t *extend(size_t size) {
     memory_block_t* new_arena = (memory_block_t*) heap;
     put_block(new_arena, size, false);
 
-    //case 1: new arena belongs in front
-    if ((uint64_t)new_arena < (uint64_t)free_head) {
-        new_arena->next = free_head;
-        while ((uint64_t)(second_head->next) != (uint64_t) free_head) second_head = get_next(second_head);
-        second_head->next = new_arena;
-        //keep list in order of memory
-        free_head = new_arena;
-        return new_arena;
-    }
+    //case 1: new arena belongs in front -> also edge case not worth worrying abt
+    // if ((uint64_t)new_arena < (uint64_t)free_head) {
+    //     new_arena->next = free_head;
+    //     while ((uint64_t)(second_head->next) != (uint64_t) free_head) second_head = get_next(second_head);
+    //     second_head->next = new_arena;
+    //     //keep list in order of memory
+    //     free_head = new_arena;
+    //     return new_arena;
+    // }
 
-    memory_block_t *temp = second_head;
+    // memory_block_t *temp = second_head;
 
-    //case 2: arena belongs in the list
+    //case 2: arena belongs in the list -> just an edge case I shouldn't worry abt?
     //find the two block between which the new arena belongs
-    do {
-        if ((uint64_t)temp < (uint64_t)new_arena &&
-            (uint64_t)get_next(temp) > (uint64_t)new_arena) {
-            //found the two blocks the arena goes in between
-            new_arena->next = get_next(second_head);
-            second_head->next = new_arena;
-            return new_arena;
-        }
-        second_head = get_next(second_head);
-    } while ((uint64_t)temp != (uint64_t) second_head);
+    // do {
+    //     if ((uint64_t)temp < (uint64_t)new_arena &&
+    //         (uint64_t)get_next(temp) > (uint64_t)new_arena) {
+    //         //found the two blocks the arena goes in between
+    //         new_arena->next = get_next(second_head);
+    //         second_head->next = new_arena;
+    //         return new_arena;
+    //     }
+    //     second_head = get_next(second_head);
+    // } while ((uint64_t)temp != (uint64_t) second_head);
 
     //case 3: arena goes at end of list
-    while ((uint64_t)get_next(temp) != (uint64_t) free_head) temp = get_next(temp);
-    temp->next = new_arena;
+    while ((uint64_t)get_next(second_head) != (uint64_t) free_head) second_head = get_next(second_head);
+    second_head->next = new_arena;
     new_arena->next = free_head;
 
     return new_arena;
@@ -187,6 +201,7 @@ memory_block_t *extend(size_t size) {
  * split - splits a given block in parts, one allocated, one free. Returns block with the input size.
  */
 memory_block_t *split(memory_block_t *block, size_t size) {
+    if (block == NULL) return NULL;
 
     //update size of free block
     //use direct block->size to preserve flag status
@@ -207,6 +222,7 @@ memory_block_t *split(memory_block_t *block, size_t size) {
  */
  //ONLY DOES LEFT COALESCING. ALL COALESCE CASES CAN BE MADE INTO LEFT COALESCING CASES
 memory_block_t *coalesce(memory_block_t *block) {
+    if ((uint64_t)block == (uint64_t)free_head) return block;
     //change size of input block
     block->block_size_alloc += get_size(get_next(block));
     //handle free list pointers
@@ -225,13 +241,19 @@ int uinit() {
     void* heap = csbrk(size);
     if (!heap) return -1;
     
-    put_block(heap, size, false);
+    //free head
+    put_block(heap, sizeof(memory_block_t), false);
 
     //set beginning of free list to beginning of arena
     free_head = heap;
-    free_head -> next = free_head;
 
-    second_head = free_head;
+    memory_block_t *second = (memory_block_t*) ((uint64_t)heap + sizeof(memory_block_t));
+
+    put_block(second, size - sizeof(memory_block_t), false);
+    free_head -> next = second;
+    second ->next = free_head;
+
+    second_head = second;
 
     return 0;
 }
@@ -248,6 +270,8 @@ void *umalloc(size_t size) {
     
     //find right block, add 16 for header size
     memory_block_t* mblock = find(ALIGN(size + sizeof(memory_block_t)));
+
+    if(mblock==NULL) return NULL;
 
     // mblock->block_size_alloc = ALIGN(size + sizeof(memory_block_t));
     //set memory block as allocated
@@ -291,6 +315,7 @@ void ufree(void *ptr) {
         new_free_block->next = free_head;
         while ((uint64_t)get_next(second_head) != 
             (uint64_t) free_head) second_head = get_next(second_head);
+        second_head -> next = new_free_block;
         free_head = new_free_block;
 
         //check if coalesce can happen
