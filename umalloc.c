@@ -95,12 +95,13 @@ memory_block_t *get_block(void *payload) {
  *      Describe how you select which free block to allocate. What placement strategy are you using?
 
  I'm simply choosing the first free block that fits, then incrementing a pointer to the next free block.
+ There are some edge cases where I do not inrement second head, but in general, I increment a pointer
+ to the next free block.
  */
 
 /*
  * find - finds a free block that can satisfy the umalloc request.
  */
- //in cp-decl-bal, i think there is an infinite loop in calling extend.
 memory_block_t *find(size_t size) { //size is size of header and payload
     memory_block_t *cur_search = second_head;
     // printf("second head: %p\n", second_head);
@@ -144,7 +145,7 @@ memory_block_t *find(size_t size) { //size is size of header and payload
 }
 
 /*
- * extend - extends the heap if more memory is required.
+ * extend - extends the heap if more memory is required. 
  */
 memory_block_t *extend(size_t size) {
     //* STUDENT TODO 
@@ -194,7 +195,8 @@ memory_block_t *extend(size_t size) {
  *      Describe how you chose to split allocated blocks. Always? Sometimes? Never? Which end?
 
  I decided to split such that the free block will be on the "left" and the allocated block will be on the "right".
- I chose to implement a thresholded split as to guarantee a minimum block size for every free block.
+ I chose to implement a thresholded split as to guarantee a minimum block size for every free block. However,
+ I do all the split checking on the calling side, rather than in the split function.
 */
 
 /*
@@ -310,19 +312,20 @@ void ufree(void *ptr) {
     //reset allocated flag
     deallocate(new_free_block);
 
-    //case 1: comes before free head
-    if ((uint64_t) new_free_block < (uint64_t) free_head) {
-        new_free_block->next = free_head;
-        while ((uint64_t)get_next(second_head) != 
-            (uint64_t) free_head) second_head = get_next(second_head);
-        second_head -> next = new_free_block;
-        free_head = new_free_block;
+    //case 1: comes before free head -> assuming arenas don't come before, can't happen
+    //since free head never moves
+    // if ((uint64_t) new_free_block < (uint64_t) free_head) {
+    //     new_free_block->next = free_head;
+    //     while ((uint64_t)get_next(second_head) != 
+    //         (uint64_t) free_head) second_head = get_next(second_head);
+    //     second_head -> next = new_free_block;
+    //     free_head = new_free_block;
 
-        //check if coalesce can happen
-        if (((uint64_t) new_free_block) + get_size(new_free_block) == 
-            (uint64_t) get_next(new_free_block)) coalesce(new_free_block);
-        return;
-    }
+    //     //check if coalesce can happen
+    //     if (((uint64_t) new_free_block) + get_size(new_free_block) == 
+    //         (uint64_t) get_next(new_free_block)) coalesce(new_free_block);
+    //     return;
+    // }
 
     //case 2: comes somewhere in the list by address
     //look for the two free blocks to place the new one in between
